@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  TECHNICIAN
+}
+
+enum FarmingUnitStatus {
+  ACTIVE
+  INACTIVE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+  MAINTENANCE
+}
+
+enum EquipmentType {
+  WATER_PUMP
+  MIST_PUMP
+  LED_GROW_LIGHT
+  FAN
+  OTHER
+}
+
+enum PowerState {
+  ON
+  OFF
+}
+
+enum EquipmentStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+enum AutomationType {
+  THRESHOLD
+  SCHEDULE
+  ALERT
+}
+
+enum AlertType {
+  LOW_WATER
+  HIGH_TEMPERATURE
+  LOW_TEMPERATURE
+  HIGH_AIR_QUALITY
+  DEVICE_OFFLINE
+  SENSOR_ERROR
+  MAINTENANCE_REQUIRED
+  SYSTEM_ERROR
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum CropStatus {
+  PLANTED
+  GROWING
+  READY_FOR_HARVEST
+  HARVESTED
+  FAILED
+}
+
+enum CommandStatus {
+  PENDING
+  ACKNOWLEDGED
+  FAILED
+  EXPIRED
+}
+
+model User {
+  id                   String    @id @default(uuid()) @db.Uuid
+  fullName             String
+  email                String    @unique
+  phone                String?
+  password             String
+  role                 Role      @default(CUSTOMER)
+  profileImage         String?
+  location             String?
+  isActive             Boolean   @default(true)
+  tokenVersion         Int       @default(0)
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  farmingUnits  FarmingUnit[]
+  alerts        Alert[]
+  revokedTokens RevokedToken[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model FarmingUnit {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String
+  ownerId          String            @db.Uuid
+  location         String
+  status           FarmingUnitStatus @default(INACTIVE)
+  /// Hardware serial expected or paired with this unit. Not the Device primary key.
+  deviceId         String?           @unique
+  installationDate DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  device      Device?
+  readings    SensorReading[]
+  equipment   Equipment[]
+  automations Automation[]
+  alerts      Alert[]
+  crops       Crop[]
+  waterUsages WaterUsage[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Device {
+  id               String       @id @default(uuid()) @db.Uuid
+  deviceIdentifier String       @unique
+  apiKeyHash       String
+  farmingUnitId    String?      @unique @db.Uuid
+  status           DeviceStatus @default(OFFLINE)
+  lastSeen         DateTime?
+  firmwareVersion  String?
+  health           Json?
+  configuration    Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  farmingUnit FarmingUnit?    @relation(fields: [farmingUnitId], references: [id], onDelete: SetNull)
+  readings    SensorReading[]
+  commands    DeviceCommand[]
+
+  @@index([status])
+  @@index([lastSeen])
+}
+
+/// Known metrics are columns. Additional sensor types are stored in `extra` so new sensors do not require a schema change.
+model SensorReading {
+  id             String   @id @default(uuid()) @db.Uuid
+  deviceId       String   @db.Uuid
+  farmingUnitId  String   @db.Uuid
+  temperature    Float?
+  humidity       Float?
+  lightIntensity Float?
+  airQuality     Float?
+  waterLevel     Float?
+  extra          Json?
+  timestamp      DateTime @default(now())
+
+  device      Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  farmingUnit FarmingUnit @relation(fields: [farmingUnitId], references: [id], onDelete: Cascade)
+
+  @@index([farmingUnitId, timestamp])
+  @@index([deviceId, timestamp])
+  @@index([timestamp])
+}
+
+model Equipment {
+  id            String          @id @default(uuid()) @db.Uuid
+  farmingUnitId String          @db.Uuid
+  name          String
+  type          EquipmentType
+  status        EquipmentStatus @default(OFFLINE)
+  powerState    PowerState      @default(OFF)
+  configuration Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  farmingUnit FarmingUnit     @relation(fields: [farmingUnitId], references: [id], onDelete: Cascade)
+  commands    DeviceCommand[]
+
+  @@index([farmingUnitId])
+  @@index([type])
+}
+
+model DeviceCommand {
+  id             String        @id @default(uuid()) @db.Uuid
+  deviceId       String        @db.Uuid
+  equipmentId    String?       @db.Uuid
+  command        String
+  payload        Json
+  status         CommandStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  acknowledgedAt DateTime?
+
+  device    Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, status])
+}
+
+model Automation {
+  id            String         @id @default(uuid()) @db.Uuid
+  farmingUnitId String         @db.Uuid
+  name          String
+  type          AutomationType
+  condition     Json
+  action        Json
+  enabled       Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  farmingUnit FarmingUnit @relation(fields: [farmingUnitId], references: [id], onDelete: Cascade)
+
+  @@index([farmingUnitId, enabled])
+}
+
+model Alert {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  farmingUnitId String?       @db.Uuid
+  type          AlertType
+  title         String
+  message       String
+  severity      AlertSeverity
+  isRead        Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farmingUnit FarmingUnit? @relation(fields: [farmingUnitId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt])
+  @@index([farmingUnitId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Crop {
+  id                  String     @id @default(uuid()) @db.Uuid
+  farmingUnitId       String     @db.Uuid
+  name                String
+  variety             String?
+  plantingDate        DateTime
+  expectedHarvestDate DateTime?
+  actualHarvestDate   DateTime?
+  status              CropStatus @default(PLANTED)
+  notes               String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  farmingUnit FarmingUnit @relation(fields: [farmingUnitId], references: [id], onDelete: Cascade)
+  harvests    Harvest[]
+
+  @@index([farmingUnitId, status])
+}
+
+model Harvest {
+  id          String   @id @default(uuid()) @db.Uuid
+  cropId      String   @db.Uuid
+  quantity    Float
+  unit        String
+  harvestDate DateTime
+  quality     String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  crop Crop @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@index([cropId, harvestDate])
+  @@index([harvestDate])
+}
+
+model WaterUsage {
+  id            String   @id @default(uuid()) @db.Uuid
+  farmingUnitId String   @db.Uuid
+  amountUsed    Float
+  unit          String   @default("liters")
+  recordedAt    DateTime @default(now())
+
+  farmingUnit FarmingUnit @relation(fields: [farmingUnitId], references: [id], onDelete: Cascade)
+
+  @@index([farmingUnitId, recordedAt])
+}
+
+model RevokedToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  jti       String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}

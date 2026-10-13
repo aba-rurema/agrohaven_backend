@@ -1,0 +1,30 @@
+import { Router } from 'express';
+import { adminRouter } from './admin.routes';
+import { alertRouter } from './alert.routes';
+import { authRouter } from './auth.routes';
+import { automationRouter } from './automation.routes';
+import { cropRouter } from './crop.routes';
+import { dashboardRouter } from './dashboard.routes';
+import { deviceRouter } from './device.routes';
+import { equipmentRouter } from './equipment.routes';
+import { farmingUnitRouter } from './farming-unit.routes';
+import { harvestRouter } from './harvest.routes';
+import { sensorRouter } from './sensor.routes';
+import { userRouter } from './user.routes';
+import { waterUsageRouter } from './water-usage.routes';
+
+export const apiRouter = Router();
+
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/users', userRouter);
+apiRouter.use('/farming-units', farmingUnitRouter);
+apiRouter.use('/devices', deviceRouter);
+apiRouter.use('/sensors', sensorRouter);
+apiRouter.use('/equipment', equipmentRouter);
+apiRouter.use('/automations', automationRouter);
+apiRouter.use('/crops', cropRouter);
+apiRouter.use('/harvests', harvestRouter);
+apiRouter.use('/water-usage', waterUsageRouter);
+apiRouter.use('/alerts', alertRouter);
+apiRouter.use('/dashboard', dashboardRouter);
+apiRouter.use('/admin', adminRouter);
